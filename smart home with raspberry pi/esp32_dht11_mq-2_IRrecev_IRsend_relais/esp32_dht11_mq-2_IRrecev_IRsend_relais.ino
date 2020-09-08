@@ -13,6 +13,9 @@ const char* password = "1234554321";
 const char* serverHostname = "192.168.43.208";
 const String serverUsername = "pi";
 const String serverPassword = "talib2020";
+const int tcrtPin = 2;     // connected to the TCRT5000 C pin
+// variables will change:
+int tcrtState = 0;      // variable for reading the TCRT5000 status
 const int buzzer = 35; //buzzer to arduino pin 35
 const int red_led= 34; //LED RED to arduino pin 34
 const int green_led= 33; //GREEN RED to arduino pin 34
@@ -21,7 +24,7 @@ const int green_led= 33; //GREEN RED to arduino pin 34
 #define smokeA0 32
 hw_timer_t *watchdogTimer = NULL;
 
-int recvPin = 14;
+int recvPin = 15;
 int sendPin = 5;
 IRrecv irrecv(recvPin);
 IRsend irsend(sendPin);
@@ -37,10 +40,10 @@ WiFiClient espClient;
 PubSubClient client(espClient);
 
 /*RELAY GPIO pins*/
-const char r1 = 17;
-const char r2 = 16;
-const char r3 = 27;
-const char r4 = 26;
+const char r1 = 23;
+const char r2 = 22;
+const char r3 = 14;
+const char r4 = 2;
 /* topics */
 #define WEATHER_TOPIC "r1/weather"
 #define REMOTE_TOPIC "r1/remote"
@@ -49,8 +52,8 @@ const char r4 = 26;
 #define R3_TOPIC "r1/r3"
 #define R4_TOPIC "r1/r4"
 #define R5_TOPIC "r1/r5"
-/*#define R6_TOPIC "r1/r6"
-#define R7_TOPIC "r1/r7"
+#define TCRT_TOPIC "TCRT/IR"
+/*#define R7_TOPIC "r1/r7"
 #define R8_TOPIC "r1/r8"*/
 #define TV_TOPIC_SONY "r1/sony/code"
 #define TV_TOPIC_PANASONIC "r1/panasonic/code"
@@ -203,6 +206,7 @@ void mqttconnect() {
       client.subscribe(R2_TOPIC);
       client.subscribe(R3_TOPIC);
       client.subscribe(R4_TOPIC);
+      client.subscribe(TCRT_TOPIC);
       /*client.subscribe(R5_TOPIC);
       client.subscribe(R6_TOPIC);
       client.subscribe(R7_TOPIC);
@@ -228,11 +232,8 @@ void mqttconnect() {
 
 void setup() {
   pinMode(smokeA0, INPUT);
-//  pinMode(buzzer, OUTPUT);
   Serial.begin(115200);
   dht.begin();
- // analogRead(12);
-  //Serial.println(analogRead(12));
   // We start by connecting to a WiFi network
   Serial.println();
   Serial.print("Connecting to ");
@@ -257,6 +258,8 @@ void setup() {
   digitalWrite(green_led,OUTPUT);
   digitalWrite(red_led,OUTPUT);
   digitalWrite(buzzer,OUTPUT);
+  pinMode(tcrtPin, INPUT); 
+  digitalWrite(tcrtPin, HIGH);  
   /*gaz pin in 
    * 
    */
@@ -265,11 +268,11 @@ void setup() {
 // pinMode(12, INPUT);
   //digitalWrite(buzzer,HIGH);
   pinMode(r1, OUTPUT);
-  digitalWrite(r1, HIGH);
+  digitalWrite(r1, LOW);
   pinMode(r2, OUTPUT);
-  digitalWrite(r2, HIGH);
+  digitalWrite(r2, LOW);
   pinMode(r3, OUTPUT);
-  digitalWrite(r3, HIGH);
+  digitalWrite(r3, LOW);
   pinMode(r4, OUTPUT);
   digitalWrite(r4, HIGH);
   Serial.println("");
@@ -372,19 +375,30 @@ void loop() {
     char temp[8];
     char humidity[8];
     char gaz[4];
+    char dist[4]; 
     float A= analogRead(smokeA0);
-        alarm(A);
-    float Apercentage = (float)((A - 300) * 100) / (4095 - 250);
+    float Apercentage = (float)((A) * 100) / (4095);
     dtostrf(dht.readTemperature(),  6, 2, temp);
     dtostrf(dht.readHumidity(), 6, 2, humidity);
-    dtostrf(Apercentage,6 , 2, gaz);
+    dtostrf(Apercentage,4 , 2, gaz);
+
     //Serial.println(analogSensor);
-    String json = "{\"temperature\":" + String(temp) + ",\"humidity\":" + String(humidity) +",\"gaz\":" + String(gaz) + "}";
+    String json = "{\"temperature\":" + String(temp) + ",\"humidity\":" + String(humidity) +",\"gaz\":" + String(gaz)+"}";
     json.toCharArray(data, (json.length() + 1));
     client.publish(WEATHER_TOPIC, data, false);
-    Serial.println(Apercentage);
+
+//////i will puther the dist condution
+  tcrtState=digitalRead(tcrtPin);  //variable to store values from the photodiode 
+   
+   dtostrf(tcrtState,1,0,dist);
+   String json1 = "{\"dist\":" + String(tcrtState)+"}";
+   json1.toCharArray(data, (json1.length() + 1));
+   client.publish(TCRT_TOPIC, data, false);
+//////
 
   }
+ 
+  
   unsigned long lastMillis;
   if (!resetCondition)
   {
@@ -404,16 +418,3 @@ void interuptReboot() {
     Serial.println("Rebooting");
     esp_restart_noos();
 }
-void alarm(float A){
-      if (A >= 1000) {  // Grab an IR code
-  digitalWrite(buzzer,HIGH); // Send 1KHz sound signal...
-  digitalWrite(red_led,HIGH);
-  delay(1000);        // ...for 1 sec
-  digitalWrite(buzzer,LOW);     // Stop sound...
-  digitalWrite(red_led,LOW);
-  delay(1000);        // ...for 1sec              // Prepare for the next value
-  }else if(A <= 1000){
-    digitalWrite(buzzer,LOW);
-  digitalWrite(green_led,HIGH);
-  }
-  }
